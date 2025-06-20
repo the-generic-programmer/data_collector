@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/zsh
 # Usage: ./unzip_csv.sh <file.csv.gz>
 # This script decompresses a .csv.gz file to .csv in the same directory.
 
-if [ $# -ne 1 ]; then
+if [[ $# -ne 1 ]]; then
     echo "Usage: $0 <file.csv.gz>"
     exit 1
 fi

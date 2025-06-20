@@ -5,8 +5,10 @@ Summary: TODO: Package description
 Maintainer: aaditya
 Maintainer-email: aaditya@todo.todo
 License: TODO: License declaration
+License-File: LICENSE
 Requires-Dist: setuptools
 Dynamic: license
+Dynamic: license-file
 Dynamic: maintainer
 Dynamic: maintainer-email
 Dynamic: requires-dist

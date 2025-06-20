@@ -165,6 +165,7 @@ class DroneLogger(Node):
         return cb
 
     def _extract_fields(self, msg, topic: str, fields: list) -> Dict[str, Any]:
+        # Helper to extract nested fields from a message using dot notation
         def get_field(val, path):
             if path in self._field_cache:
                 attrs = self._field_cache[path]
@@ -176,14 +177,17 @@ class DroneLogger(Node):
                 if val == 'N/A':
                     break
             return val
+        # Prepare the base data dictionary with timestamp, topic, and sequence number
         data = {
             'timestamp': datetime.utcnow().isoformat(timespec='milliseconds') + 'Z',
             'topic': topic,
             'sequence': getattr(getattr(msg, 'header', None), 'seq', 0)
         }
+        # Extract each requested field and handle invalid or missing values
         for field in fields:
             val = get_field(msg, field)
             if isinstance(val, (int, float)) and not isinstance(val, bool):
+                # Check for extremely large values or NaN
                 if abs(val) > 1e10 or (isinstance(val, float) and not val == val):
                     self.get_logger().warn(f'Invalid value for {field}: {val}')
                     val = 'N/A'
@@ -193,14 +197,16 @@ class DroneLogger(Node):
         return data
 
     def _get_log_filename(self):
+        # Generate a timestamped log filename, using .csv.gz if compression is enabled
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         if self.config.compress_logs:
             base = self.log_dir / f'drone_log_{ts}.csv.gz'
         else:
             base = self.log_dir / f'drone_log_{ts}.csv'
-        return str(base)  # Always return .csv, not .gz
+        return str(base)
 
     def _flush_buffer(self):
+        # Write the current log buffer to disk (compressed or uncompressed)
         with self.buffer_lock:
             if not self.log_buffer:
                 self.flush_in_progress = False

@@ -1,0 +1,21 @@
+running egg_info
+writing build/data_collector/data_collector.egg-info/PKG-INFO
+writing dependency_links to build/data_collector/data_collector.egg-info/dependency_links.txt
+writing entry points to build/data_collector/data_collector.egg-info/entry_points.txt
+writing requirements to build/data_collector/data_collector.egg-info/requires.txt
+writing top-level names to build/data_collector/data_collector.egg-info/top_level.txt
+reading manifest file 'build/data_collector/data_collector.egg-info/SOURCES.txt'
+adding license file 'LICENSE'
+writing manifest file 'build/data_collector/data_collector.egg-info/SOURCES.txt'
+running build
+running build_py
+copying data_collector/my_node.py -> /home/aaditya/ardu_ws/src/data_collector/build/data_collector/build/lib/data_collector
+running install
+running install_lib
+running install_data
+running install_egg_info
+removing '/home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/python3.10/site-packages/data_collector-0.0.0-py3.10.egg-info' (and everything under it)
+Copying build/data_collector/data_collector.egg-info to /home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/python3.10/site-packages/data_collector-0.0.0-py3.10.egg-info
+running install_scripts
+Installing my_node script to /home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/data_collector
+writing list of installed files to '/home/aaditya/ardu_ws/src/data_collector/build/data_collector/install.log'
