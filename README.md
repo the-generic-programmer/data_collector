@@ -1,66 +1,38 @@
-# Directory Structure
+# data_collector
+
+A ROS 2 package for collecting and logging flight data from SITL and AP_DDS sources. Data is saved as CSV or compressed CSV (`.csv.gz`) files for later analysis.
+
+---
+
+## Directory Structure (Short)
 
 ```
 .  
 ├── LICENSE  
 ├── README.md  
 ├── package.xml  
-├── run_drone_logger.sh  
 ├── setup.cfg  
 ├── setup.py  
-├── unzip_csv.sh  
 ├── __init__.py  
-├── build/  
-│   ├── COLCON_IGNORE  
-│   └── data_collector/  
-│       ├── colcon_build.rc  
-│       ├── colcon_command_prefix_setup_py.sh  
-│       ├── colcon_command_prefix_setup_py.sh.env  
-│       ├── install.log  
-│       ├── build/  
-│       ├── data_collector.egg-info/  
-│       └── prefix_override/  
+├── bash_scripts/  
+│   ├── run_drone_logger.sh  
+│   ├── run_pipeline.sh  
+│   └── unzip_csv.sh  
+├── zsh_scripts/  
+│   ├── run_drone_logger.zsh  
+│   ├── run_pipeline.zsh  
+│   └── unzip_csv.zsh  
 ├── data_collector/  
 │   ├── __init__.py  
 │   └── my_node.py  
+├── build/  
 ├── install/  
-│   ├── _local_setup_util_ps1.py  
-│   ├── _local_setup_util_sh.py  
-│   ├── COLCON_IGNORE  
-│   ├── local_setup.bash  
-│   ├── local_setup.ps1  
-│   ├── local_setup.sh  
-│   ├── local_setup.zsh  
-│   ├── setup.bash  
-│   ├── setup.ps1  
-│   ├── setup.sh  
-│   ├── setup.zsh  
-│   └── data_collector/  
-│       ├── lib/  
-│       └── share/  
 ├── log/  
-│   ├── latest  
-│   ├── latest_build  
-│   ├── COLCON_IGNORE  
-│   └── build_*/  
 ├── logs/  
-│   ├── drone_log_*.csv.gz  
-│   └── drone_log_*.csv  
 ├── README/  
-│   ├── MAVROS && SITL  
-│   └── RosRunDrone.txt  
 ├── resource/  
-│   └── data_collector  
 ├── test/  
-│   ├── test_copyright.py  
-│   ├── test_flake8.py  
-│   ├── test_pep257.py  
-│   └── logs/  
 ```
-
-# data_collector
-
-A ROS 2 package for collecting and logging flight data from SITL and AP_DDS sources. Data is saved as CSV or compressed CSV (`.csv.gz`) files for later analysis.
 
 ---
 
@@ -77,8 +49,6 @@ A ROS 2 package for collecting and logging flight data from SITL and AP_DDS sour
 ---
 
 ## Topics Subscribed
-
-The node subscribes to the following topics and logs selected fields:
 
 | Topic | Message Type | Fields Logged |
 |-------|--------------|---------------|
@@ -111,33 +81,27 @@ The node subscribes to the following topics and logs selected fields:
 
 ---
 
-## Usage
+## Quickstart
 
-### Build
-
-Build the package using colcon:
+### 1. Build the Package
 
 ```bash
 colcon build --packages-select data_collector
 ```
 
-### Source the workspace
-
-Source the workspace setup script:
+### 2. Source the Workspace
 
 ```bash
 source install/setup.bash
 ```
 
-### Run the logger node
-
-Launch the logger node:
+### 3. Run the Logger Node
 
 ```bash
 ros2 run data_collector my_node
 ```
 
-### Start/Stop Logging
+### 4. Start/Stop Logging
 
 Use the provided services to control logging:
 
@@ -146,7 +110,7 @@ ros2 service call /start_logging std_srvs/srv/Trigger
 ros2 service call /stop_logging std_srvs/srv/Trigger
 ```
 
-### Example: Decompress a log file
+### 5. Decompress a Log File
 
 To decompress a `.csv.gz` log file:
 
@@ -168,13 +132,12 @@ Logging behavior can be customized by editing the `LogConfig` dataclass in `my_n
 
 ---
 
-## File Structure
+## File Overview
 
 - `data_collector/` — Python package with main node (`my_node.py`)
 - `logs/` — Output directory for log files (created automatically)
 - `test/` — Test scripts for code quality and compliance
-- `run_drone_logger.sh` — Example shell script to launch the logger
-- `unzip_csv.sh` — Helper script to decompress `.csv.gz` log files
+- `bash_scripts/` and `zsh_scripts/` — Example shell scripts to launch the logger and manage logs
 - `README/` — Additional documentation and usage notes
 - `resource/` — ROS resource files
 
@@ -193,6 +156,44 @@ Logging behavior can be customized by editing the `LogConfig` dataclass in `my_n
 - If logs are not being written, ensure the node is running and logging is started via the service call.
 - Check the `logs/` directory for output files. If using compression, verify with `file logs/*.csv.gz`.
 - For missing fields or errors, review the node's console output for warnings.
+- If you encounter permission errors, ensure you have write access to the `logs/` directory.
+- For ROS 2 environment issues, make sure you have sourced the correct setup script.
+
+---
+
+## Full Directory Structure
+
+```
+.  
+├── LICENSE  
+├── README.md  
+├── package.xml  
+├── setup.cfg  
+├── setup.py  
+├── __init__.py  
+├── bash_scripts/  
+│   ├── run_drone_logger.sh  
+│   ├── run_pipeline.sh  
+│   └── unzip_csv.sh  
+├── zsh_scripts/  
+│   ├── run_drone_logger.zsh  
+│   ├── run_pipeline.zsh  
+│   └── unzip_csv.zsh  
+├── data_collector/  
+│   ├── __init__.py  
+│   └── my_node.py  
+├── build/  
+├── install/  
+├── log/  
+├── logs/  
+├── README/  
+├── resource/  
+├── test/  
+│   ├── test_copyright.py  
+│   ├── test_flake8.py  
+│   ├── test_pep257.py  
+│   └── logs/  
+```
 
 ---
 
