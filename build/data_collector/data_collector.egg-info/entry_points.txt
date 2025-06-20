@@ -1,0 +1,2 @@
+[console_scripts]
+my_node = data_collector.my_node:main

@@ -1,0 +1,5 @@
+cd ~/Desktop/drone_weather_predictor
+colcon build
+source ~/ardu_ws/install/setup.zsh
+ros2 run drone_logger_pkg drone_logger
+
