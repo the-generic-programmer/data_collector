@@ -32,7 +32,7 @@ TOPIC_CONFIG = {
 class LogConfig:
     max_buffer_size: int = 1  # Effectively disables buffering, flushes on every message
     log_dir: str = "logs"
-    compress_logs: bool = True  # Enable gzip compression for logs
+    compress_logs: bool = False # Enable gzip compression for logs
     health_check_interval: float = 5.0
     message_timeout: float = 10.0
 
@@ -45,22 +45,28 @@ class DroneLogger(Node):
         self.logging_active = False
         self.log_dir = Path(self.config.log_dir)
         self.log_dir.mkdir(exist_ok=True, parents=True)
-        # Only track /ap/battery
+        self.log_file = None
+        self.log_file_path = None
+        self.header_written = False
         self.last_message_time = {'/ap/battery': datetime.now()}
         self.health_timer = self.create_timer(self.config.health_check_interval, self.check_health)
         self.thread_pool = ThreadPoolExecutor(max_workers=2)
         self.flush_in_progress = False
         self._field_cache = {}
-        self.create_subscription(BatteryState, '/ap/battery', self.battery_callback, qos_profile=self.qos_profile)
+        # Use make_callback for topics to enable CSV logging
+        self.create_subscription(BatteryState, '/ap/battery', self.make_callback('/ap/battery', ['voltage', 'current']), qos_profile=self.qos_profile)
+        self.create_subscription(NavSatFix, '/ap/navsat', self.make_callback('/ap/navsat', ['latitude', 'longitude', 'altitude']), qos_profile=self.qos_profile)
+        self.create_subscription(TwistStamped, '/ap/twist/filtered', self.make_callback('/ap/twist/filtered', ['twist.linear.x', 'twist.linear.y', 'twist.linear.z']), qos_profile=self.qos_profile)
+        self.create_subscription(Imu, '/ap/imu/experimental/data', self.make_callback('/ap/imu/experimental/data', [
+            'angular_velocity.x', 'angular_velocity.y', 'angular_velocity.z',
+            'linear_acceleration.x', 'linear_acceleration.y', 'linear_acceleration.z']), qos_profile=self.qos_profile)
+        # Other topics can still use their original callbacks if not needed in CSV
         self.create_subscription(Clock, '/ap/clock', self.clock_callback, qos_profile=self.qos_profile)
         self.create_subscription(GeoPoseStamped, '/ap/geopose/filtered', self.geopose_filtered_callback, qos_profile=self.qos_profile)
         self.create_subscription(GeoPointStamped, '/ap/gps_global_origin/filtered', self.gps_global_origin_filtered_callback, qos_profile=self.qos_profile)
-        self.create_subscription(Imu, '/ap/imu/experimental/data', self.imu_experimental_data_callback, qos_profile=self.qos_profile)
-        self.create_subscription(NavSatFix, '/ap/navsat', self.navsat_callback, qos_profile=self.qos_profile)
         self.create_subscription(PoseStamped, '/ap/pose/filtered', self.pose_filtered_callback, qos_profile=self.qos_profile)
         self.create_subscription(TFMessage, '/ap/tf_static', self.tf_static_callback, qos_profile=self.qos_profile)
         self.create_subscription(Time, '/ap/time', self.time_callback, qos_profile=self.qos_profile)
-        self.create_subscription(TwistStamped, '/ap/twist/filtered', self.twist_filtered_callback, qos_profile=self.qos_profile)
         self.create_service(Trigger, 'start_logging', self._toggle_logging(True))
         self.create_service(Trigger, 'stop_logging', self._toggle_logging(False))
         self.get_logger().info('Logger node initialized and listening...')
@@ -78,13 +84,25 @@ class DroneLogger(Node):
                 response.message = f'Logging is already {"active" if start else "inactive"}.'
             else:
                 self.logging_active = start
-                if not start:
+                if start:
+                    self._open_log_file()
+                else:
                     self._flush_buffer()
+                    self._close_log_file()
                 response.success = True
                 response.message = f'Logging {"started" if start else "stopped and buffer flushed"}.'
                 self.get_logger().info(response.message)
             return response
         return callback
+
+    def _open_log_file(self):
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        self.log_file_path = self.log_dir / f'drone_log_{ts}.csv'
+        self.header_written = False
+
+    def _close_log_file(self):
+        self.log_file_path = None
+        self.header_written = False
 
     def battery_callback(self, msg: BatteryState):
         # Example: log voltage and current
@@ -206,36 +224,41 @@ class DroneLogger(Node):
         return str(base)
 
     def _flush_buffer(self):
-        # Write the current log buffer to disk (compressed or uncompressed)
         with self.buffer_lock:
-            if not self.log_buffer:
+            if not self.log_buffer or not self.log_file_path:
                 self.flush_in_progress = False
                 return
             logs_to_save = self.log_buffer.copy()
             self.log_buffer.clear()
-        filename = self._get_log_filename()
         try:
-            if self.config.compress_logs:
-                import gzip
-                with gzip.open(filename, 'wt', newline='') as f:
-                    self._write_csv(f, logs_to_save)
-            else:
-                with open(filename, 'w', newline='') as f:
-                    self._write_csv(f, logs_to_save)
-            self.get_logger().info(f'Saved {len(logs_to_save)} records to {filename}')
+            file_exists = self.log_file_path.exists()
+            with open(self.log_file_path, 'a', newline='') as f:
+                self._write_csv(f, logs_to_save, write_header=not file_exists or not self.header_written)
+                self.header_written = True
+            self.get_logger().info(f'Saved {len(logs_to_save)} records to {self.log_file_path}')
         except Exception as e:
             self.get_logger().error(f'Failed to save logs: {str(e)}')
         finally:
             with self.buffer_lock:
                 self.flush_in_progress = False
 
-    def _write_csv(self, file_obj, logs: list):
+    def _write_csv(self, file_obj, logs: list, write_header=True):
         if not logs:
             return
-        fieldnames = sorted({k for d in logs for k in d})
+        # Always use the union of all possible fields from all topics
+        all_fields = set(['timestamp', 'topic', 'sequence'])
+        for topic, (_, fields) in TOPIC_CONFIG.items():
+            all_fields.update(fields)
+        fieldnames = sorted(all_fields)
         writer = csv.DictWriter(file_obj, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(logs)
+        if write_header:
+            writer.writeheader()
+        for row in logs:
+            # Ensure all fields are present in each row
+            for field in fieldnames:
+                if field not in row:
+                    row[field] = ''
+            writer.writerow(row)
 
     def check_health(self):
         now = datetime.now()
