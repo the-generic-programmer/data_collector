@@ -11,8 +11,12 @@ from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
-from geometry_msgs.msg import TwistStamped
+from rosgraph_msgs.msg import Clock
+from geographic_msgs.msg import GeoPoseStamped, GeoPointStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import BatteryState, NavSatFix, Imu
+from tf2_msgs.msg import TFMessage
+from builtin_interfaces.msg import Time
 from std_srvs.srv import Trigger
 
 TOPIC_CONFIG = {
@@ -26,9 +30,9 @@ TOPIC_CONFIG = {
 
 @dataclass
 class LogConfig:
-    max_buffer_size: int = 1000
+    max_buffer_size: int = 1  # Effectively disables buffering, flushes on every message
     log_dir: str = "logs"
-    compress_logs: bool = False  # Changed default to False for plain CSV
+    compress_logs: bool = True  # Enable gzip compression for logs
     health_check_interval: float = 5.0
     message_timeout: float = 10.0
 
@@ -48,6 +52,15 @@ class DroneLogger(Node):
         self.flush_in_progress = False
         self._field_cache = {}
         self.create_subscription(BatteryState, '/ap/battery', self.battery_callback, qos_profile=self.qos_profile)
+        self.create_subscription(Clock, '/ap/clock', self.clock_callback, qos_profile=self.qos_profile)
+        self.create_subscription(GeoPoseStamped, '/ap/geopose/filtered', self.geopose_filtered_callback, qos_profile=self.qos_profile)
+        self.create_subscription(GeoPointStamped, '/ap/gps_global_origin/filtered', self.gps_global_origin_filtered_callback, qos_profile=self.qos_profile)
+        self.create_subscription(Imu, '/ap/imu/experimental/data', self.imu_experimental_data_callback, qos_profile=self.qos_profile)
+        self.create_subscription(NavSatFix, '/ap/navsat', self.navsat_callback, qos_profile=self.qos_profile)
+        self.create_subscription(PoseStamped, '/ap/pose/filtered', self.pose_filtered_callback, qos_profile=self.qos_profile)
+        self.create_subscription(TFMessage, '/ap/tf_static', self.tf_static_callback, qos_profile=self.qos_profile)
+        self.create_subscription(Time, '/ap/time', self.time_callback, qos_profile=self.qos_profile)
+        self.create_subscription(TwistStamped, '/ap/twist/filtered', self.twist_filtered_callback, qos_profile=self.qos_profile)
         self.create_service(Trigger, 'start_logging', self._toggle_logging(True))
         self.create_service(Trigger, 'stop_logging', self._toggle_logging(False))
         self.get_logger().info('Logger node initialized and listening...')
@@ -74,37 +87,63 @@ class DroneLogger(Node):
         return callback
 
     def battery_callback(self, msg: BatteryState):
-        # if not self.logging_active:
-        #     return
-        self.last_message_time['/ap/battery'] = datetime.now()
-        data = {
-            'timestamp': datetime.utcnow().isoformat(timespec='milliseconds') + 'Z',
-            'topic': '/ap/battery',
-            'header_stamp_sec': getattr(msg.header.stamp, 'sec', 'N/A'),
-            'header_stamp_nanosec': getattr(msg.header.stamp, 'nanosec', 'N/A'),
-            'header_frame_id': getattr(msg.header, 'frame_id', 'N/A'),
-            'voltage': msg.voltage,
-            'temperature': msg.temperature,
-            'current': msg.current,
-            'charge': msg.charge,
-            'capacity': msg.capacity,
-            'design_capacity': msg.design_capacity,
-            'percentage': msg.percentage,
-            'power_supply_status': msg.power_supply_status,
-            'power_supply_health': msg.power_supply_health,
-            'power_supply_technology': msg.power_supply_technology,
-            'present': msg.present,
-            'cell_voltage': list(msg.cell_voltage) if hasattr(msg, 'cell_voltage') else [],
-            'cell_temperature': list(msg.cell_temperature) if hasattr(msg, 'cell_temperature') else [],
-            'location': msg.location,
-            'serial_number': msg.serial_number,
-        }
-        self.get_logger().info(f'Received battery data: {data}')
-        with self.buffer_lock:
-            self.log_buffer.append(data)
-            if len(self.log_buffer) >= self.config.max_buffer_size and not self.flush_in_progress:
-                self.flush_in_progress = True
-                self.thread_pool.submit(self._flush_buffer)
+        # Example: log voltage and current
+        self.get_logger().info(f"Battery: voltage={msg.voltage}, current={msg.current}")
+
+    def clock_callback(self, msg: Clock):
+        self.get_logger().info(f"Clock: sec={msg.clock.sec}, nanosec={msg.clock.nanosec}")
+
+    def geopose_filtered_callback(self, msg: GeoPoseStamped):
+        pos = msg.pose.position
+        ori = msg.pose.orientation
+        self.get_logger().info(
+            f"GeoPose: lat={pos.latitude}, lon={pos.longitude}, alt={pos.altitude}, "
+            f"orientation=({ori.x}, {ori.y}, {ori.z}, {ori.w})"
+        )
+
+    def gps_global_origin_filtered_callback(self, msg: GeoPointStamped):
+        pos = msg.position
+        self.get_logger().info(
+            f"GPS Origin: lat={pos.latitude}, lon={pos.longitude}, alt={pos.altitude}"
+        )
+
+    def imu_experimental_data_callback(self, msg: Imu):
+        av = msg.angular_velocity
+        la = msg.linear_acceleration
+        self.get_logger().info(
+            f"IMU: ang_vel=({av.x}, {av.y}, {av.z}), lin_acc=({la.x}, {la.y}, {la.z})"
+        )
+
+    def navsat_callback(self, msg: NavSatFix):
+        self.get_logger().info(
+            f"NavSat: lat={msg.latitude}, lon={msg.longitude}, alt={msg.altitude}"
+        )
+
+    def pose_filtered_callback(self, msg: PoseStamped):
+        pos = msg.pose.position
+        ori = msg.pose.orientation
+        self.get_logger().info(
+            f"Pose: x={pos.x}, y={pos.y}, z={pos.z}, orientation=({ori.x}, {ori.y}, {ori.z}, {ori.w})"
+        )
+
+    def tf_static_callback(self, msg: TFMessage):
+        for t in msg.transforms:
+            tr = t.transform.translation
+            rot = t.transform.rotation
+            self.get_logger().info(
+                f"TF: {t.header.frame_id} -> {t.child_frame_id}, "
+                f"trans=({tr.x}, {tr.y}, {tr.z}), rot=({rot.x}, {rot.y}, {rot.z}, {rot.w})"
+            )
+
+    def time_callback(self, msg: Time):
+        self.get_logger().info(f"Time: sec={msg.sec}, nanosec={msg.nanosec}")
+
+    def twist_filtered_callback(self, msg: TwistStamped):
+        lin = msg.twist.linear
+        ang = msg.twist.angular
+        self.get_logger().info(
+            f"Twist: lin=({lin.x}, {lin.y}, {lin.z}), ang=({ang.x}, {ang.y}, {ang.z})"
+        )
 
     def make_callback(self, topic: str, fields: list) -> Callable:
         def cb(msg):
@@ -155,7 +194,10 @@ class DroneLogger(Node):
 
     def _get_log_filename(self):
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        base = self.log_dir / f'drone_log_{ts}.csv'
+        if self.config.compress_logs:
+            base = self.log_dir / f'drone_log_{ts}.csv.gz'
+        else:
+            base = self.log_dir / f'drone_log_{ts}.csv'
         return str(base)  # Always return .csv, not .gz
 
     def _flush_buffer(self):
@@ -167,8 +209,13 @@ class DroneLogger(Node):
             self.log_buffer.clear()
         filename = self._get_log_filename()
         try:
-            with open(filename, 'w', newline='') as f:
-                self._write_csv(f, logs_to_save)
+            if self.config.compress_logs:
+                import gzip
+                with gzip.open(filename, 'wt', newline='') as f:
+                    self._write_csv(f, logs_to_save)
+            else:
+                with open(filename, 'w', newline='') as f:
+                    self._write_csv(f, logs_to_save)
             self.get_logger().info(f'Saved {len(logs_to_save)} records to {filename}')
         except Exception as e:
             self.get_logger().error(f'Failed to save logs: {str(e)}')
