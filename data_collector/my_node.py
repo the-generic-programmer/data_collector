@@ -35,7 +35,7 @@ TOPIC_CONFIG = {
 @dataclass
 class LogConfig:
     max_buffer_size: int = 1  # Effectively disables buffering, flushes on every message
-    log_dir: str = "data_collector/logs"
+    log_dir: str = "data_collector/logs"  # Default output directory for logs
     compress_logs: bool = False # Enable gzip compression for logs
     health_check_interval: float = 5.0
     message_timeout: float = 10.0
