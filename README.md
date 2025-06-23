@@ -1,6 +1,6 @@
 # data_collector
 
-A ROS 2 package for collecting and logging flight data from SITL and AP_DDS sources. Data is saved as CSV or compressed CSV (`.csv.gz`) files for later analysis.
+A ROS 2 package for collecting, logging, and live-streaming flight data from SITL and AP_DDS sources. Data is saved as CSV or compressed CSV (`.csv.gz`) files for later analysis, and can also be streamed live to TCP clients for real-time monitoring.
 
 ---
 
@@ -41,6 +41,7 @@ A ROS 2 package for collecting and logging flight data from SITL and AP_DDS sour
 - **Subscribes to key flight telemetry topics** (battery, GPS, IMU, pose, etc.)
 - **Logs selected fields** from each message to a buffer and periodically flushes to disk
 - **Supports plain CSV and gzip-compressed CSV output** for efficient storage
+- **Live TCP streaming**: Streams each log entry in real-time to any connected TCP client (JSON format, port 9000)
 - **Health monitoring** for message timeouts (warns if no data is received for a configurable period)
 - **Start/stop logging via ROS 2 services** for flexible control
 - **Thread-safe, non-blocking log writing** using a buffer and thread pool
@@ -74,10 +75,28 @@ A ROS 2 package for collecting and logging flight data from SITL and AP_DDS sour
 
 ## Output
 
-- Logs are saved in the `logs/` directory by default (can be changed in config)
-- Filenames are timestamped, e.g. `drone_log_YYYYMMDD_HHMMSS.csv.gz`
+- Logs are saved in the `data_collector/logs/` directory by default (can be changed in config)
+- Filenames are timestamped, e.g. `drone_log_YYYYMMDD_HHMMSS.csv` or `.csv.gz`
 - Each row contains: timestamp (UTC, ISO8601), topic, sequence number, and selected fields from the message
 - If compression is enabled, files are written as gzip-compressed CSVs for efficient storage
+- **Live streaming:** Each log entry is also sent as a JSON line to all connected TCP clients (see below)
+
+---
+
+## Live TCP Streaming
+
+- The logger starts a TCP server on port 9000 (by default) and streams log data to all connected clients.
+- **Stream rate is configurable:**
+  - Set the `tcp_stream_rate` field in the `LogConfig` dataclass in `my_node.py`.
+  - Set to a number (e.g. `1.0`) to send the latest data for each topic at that rate (Hz).
+  - Set to `'live'` to stream each message instantly as it is received (no batching).
+- You can connect with `telnet`, `nc`, or the provided Python client script:
+
+```bash
+python3 tcp_log_client.py --host 127.0.0.1 --port 9000
+```
+
+- Each line is a JSON object with the same fields as the CSV log.
 
 ---
 
@@ -110,12 +129,17 @@ ros2 service call /start_logging std_srvs/srv/Trigger
 ros2 service call /stop_logging std_srvs/srv/Trigger
 ```
 
-### 5. Decompress a Log File
+### 5. View Logs or Live Data
+
+- Logs: Check the `data_collector/logs/` directory for `.csv` or `.csv.gz` files.
+- Live: Connect a TCP client to port 9000 to receive real-time log entries as JSON.
+
+### 6. Decompress a Log File
 
 To decompress a `.csv.gz` log file:
 
 ```bash
-gunzip logs/drone_log_YYYYMMDD_HHMMSS.csv.gz
+gunzip data_collector/logs/drone_log_YYYYMMDD_HHMMSS.csv.gz
 ```
 
 ---
@@ -129,17 +153,19 @@ Logging behavior can be customized by editing the `LogConfig` dataclass in `my_n
 - `compress_logs`: Enable/disable gzip compression for logs
 - `health_check_interval`: How often to check for missing messages (seconds)
 - `message_timeout`: Time to wait before warning about missing messages (seconds)
+- `tcp_stream_rate`: TCP streaming rate (Hz as float, or `'live'` for instant streaming)
 
 ---
 
 ## File Overview
 
 - `data_collector/` — Python package with main node (`my_node.py`)
-- `logs/` — Output directory for log files (created automatically)
+- `data_collector/logs/` — Output directory for log files (created automatically)
 - `test/` — Test scripts for code quality and compliance
 - `bash_scripts/` and `zsh_scripts/` — Example shell scripts to launch the logger and manage logs
 - `README/` — Additional documentation and usage notes
 - `resource/` — ROS resource files
+- `tcp_log_client.py` — Example Python TCP client for live log streaming
 
 ---
 
@@ -154,10 +180,11 @@ Logging behavior can be customized by editing the `LogConfig` dataclass in `my_n
 ## Troubleshooting
 
 - If logs are not being written, ensure the node is running and logging is started via the service call.
-- Check the `logs/` directory for output files. If using compression, verify with `file logs/*.csv.gz`.
+- Check the `data_collector/logs/` directory for output files. If using compression, verify with `file data_collector/logs/*.csv.gz`.
 - For missing fields or errors, review the node's console output for warnings.
-- If you encounter permission errors, ensure you have write access to the `logs/` directory.
+- If you encounter permission errors, ensure you have write access to the log directory.
 - For ROS 2 environment issues, make sure you have sourced the correct setup script.
+- If you see shutdown warnings about `rosout`, these are suppressed in the latest version.
 
 ---
 
@@ -182,6 +209,7 @@ Logging behavior can be customized by editing the `LogConfig` dataclass in `my_n
 ├── data_collector/  
 │   ├── __init__.py  
 │   └── my_node.py  
+│   └── logs/  
 ├── build/  
 ├── install/  
 ├── log/  
@@ -193,6 +221,8 @@ Logging behavior can be customized by editing the `LogConfig` dataclass in `my_n
 │   ├── test_flake8.py  
 │   ├── test_pep257.py  
 │   └── logs/  
+│   └── ...  
+├── tcp_log_client.py  
 ```
 
 ---

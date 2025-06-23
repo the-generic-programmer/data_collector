@@ -9,6 +9,10 @@ from typing import Dict, Any, Callable
 from dataclasses import dataclass
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
+import socket
+import threading
+import json
+from queue import Queue
 
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from rosgraph_msgs.msg import Clock
@@ -31,10 +35,97 @@ TOPIC_CONFIG = {
 @dataclass
 class LogConfig:
     max_buffer_size: int = 1  # Effectively disables buffering, flushes on every message
-    log_dir: str = "logs"
+    log_dir: str = "data_collector/logs"
     compress_logs: bool = False # Enable gzip compression for logs
     health_check_interval: float = 5.0
     message_timeout: float = 10.0
+    tcp_stream_rate: str = '1.0'  # Can be float (Hz) or 'live' for instant
+
+    def __post_init__(self):
+        # Ensure log_dir is always an absolute path
+        self.log_dir = str(Path(self.log_dir).absolute())
+
+class TCPLogServer:
+    def __init__(self, host='0.0.0.0', port=9000):
+        self.host = host
+        self.port = port
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen(5)
+        self.clients = []
+        self.running = False
+        self.lock = threading.Lock()
+        self.thread = threading.Thread(target=self._accept_clients, daemon=True)
+
+    def start(self):
+        self.running = True
+        self.thread.start()
+
+    def _accept_clients(self):
+        while self.running:
+            try:
+                client_sock, _ = self.server_socket.accept()
+                with self.lock:
+                    self.clients.append(client_sock)
+            except Exception:
+                break
+
+    def send(self, data: dict):
+        msg = json.dumps(data) + '\n'
+        with self.lock:
+            for client in self.clients[:]:
+                try:
+                    client.sendall(msg.encode('utf-8'))
+                except Exception:
+                    self.clients.remove(client)
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+
+    def send_batch(self, data_list):
+        # Send a list of dicts as JSON lines
+        with self.lock:
+            for data in data_list:
+                msg = json.dumps(data) + '\n'
+                for client in self.clients[:]:
+                    try:
+                        client.sendall(msg.encode('utf-8'))
+                    except Exception:
+                        self.clients.remove(client)
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+
+    def send_instant(self, data):
+        # Send a single dict instantly (for 'live' mode)
+        msg = json.dumps(data) + '\n'
+        with self.lock:
+            for client in self.clients[:]:
+                try:
+                    client.sendall(msg.encode('utf-8'))
+                except Exception:
+                    self.clients.remove(client)
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+
+    def stop(self):
+        self.running = False
+        try:
+            self.server_socket.close()
+        except Exception:
+            pass
+        with self.lock:
+            for client in self.clients:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+            self.clients.clear()
 
 class DroneLogger(Node):
     def __init__(self, config: LogConfig = LogConfig()):
@@ -45,7 +136,6 @@ class DroneLogger(Node):
         self.logging_active = False
         self.log_dir = Path(self.config.log_dir)
         self.log_dir.mkdir(exist_ok=True, parents=True)
-        self.log_file = None
         self.log_file_path = None
         self.header_written = False
         self.last_message_time = {'/ap/battery': datetime.now()}
@@ -53,6 +143,14 @@ class DroneLogger(Node):
         self.thread_pool = ThreadPoolExecutor(max_workers=2)
         self.flush_in_progress = False
         self._field_cache = {}
+        self.tcp_server = TCPLogServer(host='0.0.0.0', port=9000)
+        self.tcp_server.start()
+        self.latest_topic_data = {}  # topic: latest data dict
+        self.tcp_stream_rate = self.config.tcp_stream_rate
+        self.tcp_stream_timer_active = True
+        if self.tcp_stream_rate != 'live':
+            self.tcp_stream_timer = threading.Thread(target=self._tcp_stream_loop, daemon=True)
+            self.tcp_stream_timer.start()
         # Use make_callback for topics to enable CSV logging
         self.create_subscription(BatteryState, '/ap/battery', self.make_callback('/ap/battery', ['voltage', 'current']), qos_profile=self.qos_profile)
         self.create_subscription(NavSatFix, '/ap/navsat', self.make_callback('/ap/navsat', ['latitude', 'longitude', 'altitude']), qos_profile=self.qos_profile)
@@ -60,7 +158,6 @@ class DroneLogger(Node):
         self.create_subscription(Imu, '/ap/imu/experimental/data', self.make_callback('/ap/imu/experimental/data', [
             'angular_velocity.x', 'angular_velocity.y', 'angular_velocity.z',
             'linear_acceleration.x', 'linear_acceleration.y', 'linear_acceleration.z']), qos_profile=self.qos_profile)
-        # Other topics can still use their original callbacks if not needed in CSV
         self.create_subscription(Clock, '/ap/clock', self.clock_callback, qos_profile=self.qos_profile)
         self.create_subscription(GeoPoseStamped, '/ap/geopose/filtered', self.geopose_filtered_callback, qos_profile=self.qos_profile)
         self.create_subscription(GeoPointStamped, '/ap/gps_global_origin/filtered', self.gps_global_origin_filtered_callback, qos_profile=self.qos_profile)
@@ -70,7 +167,6 @@ class DroneLogger(Node):
         self.create_service(Trigger, 'start_logging', self._toggle_logging(True))
         self.create_service(Trigger, 'stop_logging', self._toggle_logging(False))
         self.get_logger().info('Logger node initialized and listening...')
-
 
     qos_profile = QoSProfile(
         depth=10,
@@ -99,8 +195,10 @@ class DroneLogger(Node):
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         self.log_file_path = self.log_dir / f'drone_log_{ts}.csv'
         self.header_written = False
+        self.get_logger().info(f"Log file opened: {self.log_file_path}")
 
     def _close_log_file(self):
+        self.get_logger().info(f"Log file closed: {self.log_file_path}")
         self.log_file_path = None
         self.header_written = False
 
@@ -176,11 +274,28 @@ class DroneLogger(Node):
                     if len(self.log_buffer) >= self.config.max_buffer_size and not self.flush_in_progress:
                         self.flush_in_progress = True
                         flush_needed = True
+                # Store latest data for TCP streaming
+                self.latest_topic_data[topic] = data
+                # If in 'live' mode, send instantly
+                if self.tcp_stream_rate == 'live':
+                    self.tcp_server.send_instant(data)
                 if flush_needed:
                     self.thread_pool.submit(self._flush_buffer)
             except Exception as e:
                 self.get_logger().error(f'Error processing message from {topic}: {str(e)}')
         return cb
+
+    def _tcp_stream_loop(self):
+        import time
+        try:
+            rate = float(self.tcp_stream_rate)
+        except Exception:
+            rate = 1.0
+        while self.tcp_stream_timer_active:
+            if self.logging_active and self.latest_topic_data:
+                batch = list(self.latest_topic_data.values())
+                self.tcp_server.send_batch(batch)
+            time.sleep(1.0 / rate)
 
     def _extract_fields(self, msg, topic: str, fields: list) -> Dict[str, Any]:
         # Helper to extract nested fields from a message using dot notation
@@ -268,21 +383,40 @@ class DroneLogger(Node):
             self.get_logger().warn(f'No messages received from /ap/battery in {self.config.message_timeout} seconds')
 
     def destroy_node(self):
+        self.tcp_stream_timer_active = False
         self.logging_active = False
         if hasattr(self, 'health_timer'):
             self.health_timer.cancel()
         self._flush_buffer()
         if hasattr(self, 'thread_pool'):
             self.thread_pool.shutdown(wait=True)
+        if hasattr(self, 'tcp_server'):
+            self.tcp_server.stop()
+        try:
+            self.get_logger().info('Logger node destroyed.')
+        except Exception:
+            pass  # Suppress any logging errors on shutdown
         super().destroy_node()
 
 
 def main(args=None):
+    import rclpy.executors
+    import warnings
     rclpy.init(args=args)
     node = DroneLogger()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Keyboard interrupt received...')
+        try:
+            node.get_logger().info('Keyboard interrupt received...')
+        except Exception:
+            pass
+    except rclpy.executors.ExternalShutdownException:
+        pass  # Clean shutdown, suppress all errors
     finally:
-        node.destroy_node()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                node.destroy_node()
+            except Exception:
+                pass  # Suppress any shutdown errors
