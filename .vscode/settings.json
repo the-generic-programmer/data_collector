@@ -1,3 +1,17 @@
 {
-    "ros.distro": "humble"
+    "ros.distro": "humble",
+    "python.autoComplete.extraPaths": [
+        "/home/aaditya/ardu_ws/install/ardupilot_dds_tests/lib/python3.10/site-packages",
+        "/home/aaditya/ardu_ws/install/ardupilot_sitl/local/lib/python3.10/dist-packages",
+        "/home/aaditya/ardu_ws/install/ardupilot_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/aaditya/ardu_ws/install/ardupilot_dds_tests/lib/python3.10/site-packages",
+        "/home/aaditya/ardu_ws/install/ardupilot_sitl/local/lib/python3.10/dist-packages",
+        "/home/aaditya/ardu_ws/install/ardupilot_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
 }
