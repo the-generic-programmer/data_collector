@@ -1,0 +1,25 @@
+[0.437s] Invoking command in '/home/aaditya/ardu_ws/src/data_collector': PYTHONPATH=/home/aaditya/ardu_ws/src/data_collector/build/data_collector/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/data_collector build --build-base /home/aaditya/ardu_ws/src/data_collector/build/data_collector/build install --record /home/aaditya/ardu_ws/src/data_collector/build/data_collector/install.log --single-version-externally-managed install_data
+[0.607s] running egg_info
+[0.619s] writing build/data_collector/data_collector.egg-info/PKG-INFO
+[0.619s] writing dependency_links to build/data_collector/data_collector.egg-info/dependency_links.txt
+[0.619s] writing entry points to build/data_collector/data_collector.egg-info/entry_points.txt
+[0.619s] writing requirements to build/data_collector/data_collector.egg-info/requires.txt
+[0.619s] writing top-level names to build/data_collector/data_collector.egg-info/top_level.txt
+[0.638s] reading manifest file 'build/data_collector/data_collector.egg-info/SOURCES.txt'
+[0.638s] adding license file 'LICENSE'
+[0.639s] writing manifest file 'build/data_collector/data_collector.egg-info/SOURCES.txt'
+[0.639s] running build
+[0.639s] running build_py
+[0.639s] copying data_collector/__init__.py -> /home/aaditya/ardu_ws/src/data_collector/build/data_collector/build/lib/data_collector
+[0.639s] running install
+[0.642s] running install_lib
+[0.651s] running install_data
+[0.651s] copying resource/data_collector -> /home/aaditya/ardu_ws/src/data_collector/install/data_collector/share/ament_index/resource_index/packages
+[0.651s] copying package.xml -> /home/aaditya/ardu_ws/src/data_collector/install/data_collector/share/data_collector
+[0.651s] running install_egg_info
+[0.660s] removing '/home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/python3.10/site-packages/data_collector-0.0.0-py3.10.egg-info' (and everything under it)
+[0.660s] Copying build/data_collector/data_collector.egg-info to /home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/python3.10/site-packages/data_collector-0.0.0-py3.10.egg-info
+[0.661s] running install_scripts
+[0.678s] Installing my_node script to /home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/data_collector
+[0.678s] writing list of installed files to '/home/aaditya/ardu_ws/src/data_collector/build/data_collector/install.log'
+[0.695s] Invoked command in '/home/aaditya/ardu_ws/src/data_collector' returned '0': PYTHONPATH=/home/aaditya/ardu_ws/src/data_collector/build/data_collector/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/aaditya/ardu_ws/src/data_collector/install/data_collector/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/data_collector build --build-base /home/aaditya/ardu_ws/src/data_collector/build/data_collector/build install --record /home/aaditya/ardu_ws/src/data_collector/build/data_collector/install.log --single-version-externally-managed install_data
