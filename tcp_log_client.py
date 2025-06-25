@@ -12,7 +12,7 @@ def main(host='127.0.0.1', port=9000):
             while True:
                 data = s.recv(4096)
                 if not data:
-                    print("Connection closed by server.")
+                    print("Connection closed by server")
                     break
                 buffer += data.decode('utf-8')
                 while '\n' in buffer:
